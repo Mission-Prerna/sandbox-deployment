@@ -1,12 +1,45 @@
 #!/bin/bash
 
+check_https_support() {
+    domain="$1"
+
+    response=$(curl -sI "http://$domain" | grep -i "Location: https://")
+
+    if [[ -n "$response" ]]; then
+        return 0  # Supports HTTPS
+    else
+        return 1  # Does not support HTTPS
+    fi
+}
+
 odk_central_env_setup () {
     echo "Checking ODK central..."
     if [ ! -f "central/.env" ]; then
-        echo "Not installed.. Installing.."
+        echo "Env isn't setup yet.. Let's set it up.."
 
-        echo "ODK Central>> Enter domain: "
+        echo "ODK Central>> Enter domain (e.g. central.example.com): "
         read ODK_CENTRAL_DOMAIN;
+
+        check_https_support "$ODK_CENTRAL_DOMAIN"
+
+        if [[ $? -eq 1 ]]; then
+            echo "Domain $ODK_CENTRAL_DOMAIN must support HTTPs. Please setup the domain correctly & re-run the script."
+            exit 1
+        fi
+
+        echo "Enter path to <fullchain.pem> certificate file (if you deploy ssl using certbot, the path should look like: </etc/letsencrypt/live/$ODK_CENTRAL_DOMAIN/fullchain.pem>): "
+        read ODK_CENTRAL_FULLCHAIN_PATH;
+        if [ ! -f "$ODK_CENTRAL_FULLCHAIN_PATH" ]; then
+            echo "No certificate found at the specified location. Exiting.."
+            exit 1
+        fi
+
+        echo "Enter path to <privkey.pem> certificate file (if you deploy ssl using certbot, the path should look like: </etc/letsencrypt/live/$ODK_CENTRAL_DOMAIN/privkey.pem>): "
+        read ODK_CENTRAL_PRIVKEY_PATH;
+        if [ ! -f "$ODK_CENTRAL_PRIVKEY_PATH" ]; then
+            echo "No certificate found at the specified location. Exiting.."
+            exit 1
+        fi
 
         echo "ODK Central>> Enter HTTP_PORT (default: 8080): "
         read ODK_CENTRAL_HTTP_PORT;
@@ -24,6 +57,9 @@ odk_central_env_setup () {
         echo "SSL_TYPE=customssl" >> ./central/.env
         echo "HTTP_PORT=$ODK_CENTRAL_HTTP_PORT" >> ./central/.env
         echo "HTTPS_PORT=$ODK_CENTRAL_HTTPS_PORT" >> ./central/.env
+
+        cp "$ODK_CENTRAL_FULLCHAIN_PATH" central/files/local/customssl/fullchain.pem
+        cp "$ODK_CENTRAL_PRIVKEY_PATH" central/files/local/customssl/privkey.pem
     else
         echo "Env setup already done. Skipping.."
     fi
@@ -32,7 +68,7 @@ odk_central_env_setup () {
 fusion_auth_env_setup () {
     echo "Checking Fusion Auth..."
     if [ ! -f "fusion-auth/.env" ]; then
-        echo "Not installed.. Installing.."
+        echo "Env isn't setup yet.. Let's set it up.."
 
         echo "Fusion Auth>> Enter FUSIONAUTH_POSTGRES_USER (default: postgres): "
         read FUSIONAUTH_POSTGRES_USER;
@@ -73,7 +109,7 @@ fusion_auth_env_setup () {
             FUSIONAUTH_API_KEY=$temp
         fi
 
-        echo "Fusion Auth>> Enter FUSIONAUTH_URL (absolute base url): "
+        echo "Fusion Auth>> Enter FUSIONAUTH_URL (absolute base url e.g. http://fusionauth.example.com): "
         read FUSIONAUTH_URL;
 
         temp=$(openssl rand -hex 10)
@@ -116,7 +152,7 @@ fusion_auth_env_setup () {
 gatekeeper_env_setup () {
     echo "Checking Gatekeeper..."
     if [ ! -f "gatekeeper/.gatekeeper.env" ]; then
-        echo "Not installed.. Installing.."
+        echo "Env isn't setup yet.. Let's set it up.."
 
         echo "Gatekeeper>> Enter Application ID (e.g. APP_org_example_nl_app): "
         read GATEKEEPER_APP_ID;
@@ -142,7 +178,7 @@ gatekeeper_env_setup () {
 prometheus_metrics_env_setup () {
     echo "Checking Prometheus Metrics..."
     if [ ! -f "metrics/.env" ]; then
-        echo "Not installed.. Installing.."
+        echo "Env isn't setup yet.. Let's set it up.."
 
         echo "Prometheus Metrics>> Enter ADMIN_USER (e.g. sandbox-admin): "
         read ADMIN_USER;
@@ -173,7 +209,7 @@ prometheus_metrics_env_setup () {
 odk_zip_nginx_env_setup () {
     echo "Checking Form Zip Downloader..."
     if [ ! -f "odk-zip-nginx/.env" ]; then
-        echo "Not installed.. Installing.."
+        echo "Env isn't setup yet.. Let's set it up.."
 
         echo "Form Zip Downloader>> Enter PORT (default: 8988): "
         read PORT;
@@ -190,7 +226,7 @@ odk_zip_nginx_env_setup () {
 form_transformer_env_setup () {
     echo "Checking Form Transformer..."
     if [ ! -f "quml2xform/.env" ]; then
-        echo "Not installed.. Installing.."
+        echo "Env isn't setup yet.. Let's set it up.."
 
         echo "Form Transformer>> Enter PORT (default: 8061): "
         read PORT;
@@ -207,7 +243,7 @@ form_transformer_env_setup () {
 backend_env_setup () {
     echo "Checking Backend..."
     if [ ! -f "hasura/.env" ]; then
-        echo "Not installed.. Installing.."
+        echo "Env isn't setup yet.. Let's set it up.."
 
         echo "Backend>> Enter Postgres DB_USER (default: postgres): "
         read DB_USER;
@@ -325,7 +361,7 @@ backend_env_setup () {
 user_service_env_setup () {
     echo "Checking User Service..."
     if [ ! -f "user-service/.user-service.env" ]; then
-        echo "Not installed.. Installing.."
+        echo "Env isn't setup yet.. Let's set it up.."
 
         temp="http://enterprise.smsgupshup.com/GatewayAPI/rest"
         echo "User Service>> Enter GUPSHUP_BASEURL (default: $temp): "
@@ -380,64 +416,66 @@ BASE_DIR=$(pwd)
 
 ## ODK Central
 odk_central_env_setup
-echo "Starting docker containers"
-echo "> docker-compose up -d"
+
+## Fusion Auth
+fusion_auth_env_setup
+
+## Gatekeeper
+gatekeeper_env_setup
+
+## Prometheus Metrics
+prometheus_metrics_env_setup
+
+## Form Zip Downloader
+odk_zip_nginx_env_setup
+
+## Form Transformer
+form_transformer_env_setup
+
+## Backend Services
+backend_env_setup
+
+## User Service
+user_service_env_setup
+
+echo "Starting Services..."
+
+echo "> cd central && docker-compose up -d"
 cd central || exit
 docker-compose up -d
 cd "$BASE_DIR" || exit
 
-## Fusion Auth
-fusion_auth_env_setup
-echo "Starting docker containers"
-echo "> docker-compose up -d"
+echo "> cd fusion-auth && docker-compose up -d"
 cd fusion-auth || exit
 docker-compose up -d
 cd "$BASE_DIR" || exit
 
-## Gatekeeper
-gatekeeper_env_setup
-echo "Starting docker containers"
-echo "> docker-compose up -d"
-cd gatekeeper_env_setup || exit
+echo "> cd gatekeeper && docker-compose up -d"
+cd gatekeeper || exit
 docker-compose up -d
 cd "$BASE_DIR" || exit
 
-## Prometheus Metrics
-prometheus_metrics_env_setup
-echo "Starting docker containers"
-echo "> docker-compose up -d"
-cd prometheus_metrics_env_setup || exit
+echo "> cd metrics && docker-compose up -d"
+cd metrics || exit
 docker-compose up -d
 cd "$BASE_DIR" || exit
 
-## Form Zip Downloader
-odk_zip_nginx_env_setup
-echo "Starting docker containers"
-echo "> docker-compose up -d"
+echo "> cd odk-zip-nginx && docker-compose up -d"
 cd odk-zip-nginx || exit
 docker-compose up -d
 cd "$BASE_DIR" || exit
 
-## Form Transformer
-form_transformer_env_setup
-echo "Starting docker containers"
-echo "> docker-compose up -d"
+echo "> cd quml2xform && docker-compose up -d"
 cd quml2xform || exit
 docker-compose up -d
 cd "$BASE_DIR" || exit
 
-## Backend Services
-backend_env_setup
-echo "Starting docker containers"
-echo "> docker-compose up -d"
+echo "> cd hasura && docker-compose up -d"
 cd hasura || exit
 docker-compose up -d
 cd "$BASE_DIR" || exit
 
-## User Service
-user_service_env_setup
-echo "Starting docker containers"
-echo "> docker-compose up -d"
+echo "> cd user-service && docker-compose up -d"
 cd user-service || exit
 docker-compose up -d
 cd "$BASE_DIR" || exit
