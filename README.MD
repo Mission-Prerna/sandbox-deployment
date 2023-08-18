@@ -58,3 +58,14 @@ server {
     listen 80;
 }
 ```
+
+## Post Deployment
+### Apply Hasura Migration & Metadata
+- Install Hasura CLI: https://hasura.io/docs/latest/hasura-cli/install-hasura-cli/
+- Take a clone of hasura migrations repository: https://github.com/Mission-Prerna/nl-hasura-migrations
+- Navigate to `nl-hasura-migrations` and create `.env` file using `sample.env`
+- Update the variables in env file & point to your live Hasura instance & admin secret
+- Run command `hasura migrate apply`. Refer [this](https://hasura.io/docs/latest/hasura-cli/commands/hasura_migrate_apply/) for more info.
+- Run command `hasura metadata apply`. Refer [this](https://hasura.io/docs/latest/hasura-cli/commands/hasura_metadata_apply/) for more info.
+
+Post executing the above steps, check out your Hasura console; you should be able to see all the migrations & metadata applied successfully.
