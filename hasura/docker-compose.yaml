@@ -1,0 +1,110 @@
+version: "3"
+services:
+  db:
+    ports:
+      - 8015:5432
+    image: postgres:14.5
+    shm_size: 20gb
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./${POSTGRES_CONF_FILE:-postgresql.conf}:/etc/postgresql.conf
+    container_name: hasura_psql
+    command: -c config_file=/etc/postgresql.conf
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_DATABASE}
+    restart: always
+
+  graphql-engine:
+    image: hasura/graphql-engine:v2.23.0
+    shm_size: 10gb
+    ports:
+      - "8011:8080"
+    depends_on:
+      - db
+    restart: always
+    container_name: hasura_graphql_engine
+    environment:
+      - HASURA_GRAPHQL_DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_DATABASE}
+      - HASURA_GRAPHQL_ENABLE_CONSOLE=${HASURA_GRAPHQL_ENABLE_CONSOLE:-t} # set to "false" to disable console
+      - HASURA_GRAPHQL_ENABLED_LOG_TYPES=startup,http-log
+      - HASURA_GRAPHQL_ADMIN_SECRET=${HASURA_GRAPHQL_ADMIN_SECRET}
+      - HASURA_GRAPHQL_PG_CONNECTIONS=${HASURA_GRAPHQL_PG_CONNECTIONS:-100}
+      - HASURA_GRAPHQL_JWT_SECRET=${HASURA_GRAPHQL_JWT_SECRET}
+  
+  pgbouncer:
+    depends_on: 
+      - db
+    build:
+      dockerfile: pgbouncer.Dockerfile
+      args:
+        - "DB_USER=${DB_USER}"
+        - "DB_PASSWORD=${DB_PASSWORD}"
+    environment:
+      DB_HOST: db
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      AUTH_FILE: /etc/pgbouncer/userlist.txt
+      AUTH_TYPE: plain
+      DB_port: 5432
+      POOL_MODE: ${POOL_MODE:-transaction}
+      DEFAULT_POOL_SIZE: ${DEFAULT_POOL_SIZE:-500}
+      MAX_CLIENT_CONN: ${MAX_CLIENT_CONN:-50000}
+      MAX_DB_CONNECTIONS: ${MAX_DB_CONNECTIONS:-980}
+    ports:
+      - 6432:6432
+    restart: always
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter
+    restart: always
+    environment:
+      - DATA_SOURCE_URI=db:5432/${DB_DATABASE}?sslmode=disable
+      - DATA_SOURCE_USER=${DB_USER}
+      - DATA_SOURCE_PASS=${DB_PASSWORD}
+    ports:
+      - "8095:9187"
+    depends_on:
+      - db
+
+  uci-chatbot-helper:
+    container_name: uci-chatbot-helper
+    image: samagragovernance/nl-uci-chatbot-helper:latest
+    ports:
+      - 8070:3000
+    restart: always
+    env_file:
+      - .env
+
+  nginx-nl-apis:
+    image: nginx:latest
+    volumes:
+      - ./nginx-nl-apis.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - nl-apis
+    ports:
+      - "3000:4000"
+    restart: always
+
+  nl-apis:
+    image: samagragovernance/nl-apis:latest
+    #ports:
+    #  - 3000:3000
+    scale: ${WORKERS:-6}
+    restart: always
+    env_file:
+      - .env
+
+  redis-nl-apis:
+    image: redis:alpine
+    #ports:
+    #  - '8031:6379'
+    command: ["redis-server", "--appendonly", "yes", "--replica-read-only", "no"]
+    volumes:
+      - ./redis-nl-apis-data:/data
+    restart: on-failure
+
+volumes:
+  db-data:
+  logs:

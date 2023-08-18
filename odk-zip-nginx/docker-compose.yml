@@ -1,0 +1,14 @@
+version: '3'
+services:
+  proxy:
+    build: ./
+    restart: unless-stopped
+    ports:
+      - ${PORT}:80
+    env_file:
+      - .env
+    volumes:
+      - ./static:/etc/nginx/static
+
+
+    

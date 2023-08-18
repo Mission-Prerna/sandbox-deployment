@@ -1,0 +1,15 @@
+version: '3.7'
+
+services:
+  app:
+    image: samagragovernance/gatekeeper-be:latest
+    env_file:
+      - .gatekeeper.env
+    ports:
+      - 8065:3000
+    volumes:
+      - configurations:/app/configurations
+    restart: always
+
+volumes:
+  configurations:

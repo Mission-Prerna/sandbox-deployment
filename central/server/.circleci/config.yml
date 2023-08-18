@@ -1,0 +1,20 @@
+version: 2
+machine:
+  node:
+    version: stable
+jobs:
+  build:
+    docker:
+      - image: circleci/node:14.17.5
+      - image: circleci/postgres:9.6-alpine-ram
+        environment:
+          POSTGRES_PASSWORD: odktest
+
+    working_directory: ~/repo
+
+    steps:
+      - checkout
+      - run: npm ci
+      - run: node .circleci/initdb.js
+      - run: make test-full
+

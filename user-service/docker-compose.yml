@@ -1,0 +1,19 @@
+version: "3"
+
+services:
+  app:
+    image: samagragovernance/esamwad-user-service:latest
+    env_file:
+      - ./.user-service.env
+    scale: ${WORKERS:-4}
+    restart: always
+
+  nginx-user-service:
+    image: nginx:latest
+    volumes:
+      - ./nginx-user-service.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
+    ports:
+      - "8017:4000"
+    restart: always

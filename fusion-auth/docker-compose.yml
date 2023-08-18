@@ -1,0 +1,87 @@
+version: "3"
+
+networks:
+  cac:
+    driver: bridge
+
+services:
+  fa-proxy:
+    image: nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./fa.conf:/etc/nginx/sites-enabled/default
+    networks:
+      - cac
+    ports:
+      - "8012:80"
+    restart: always
+  # Fusion Auth
+  fa-search:
+    container_name: fa-search
+    networks:
+      - cac
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.3.1
+    environment:
+      - cluster.name=fusionauth
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=${ES_JAVA_OPTS}"
+      - discovery.type=single-node
+      - FUSIONAUTH_APP_RUNTIME_MODE=production
+    ports:
+      - 9200
+    restart: always
+    # ulimits: # Don't work with Gitpod
+    #   memlock:
+    #     soft: -1
+    #     hard: -1
+    volumes:
+      - fa-es-data:/usr/share/elasticsearch/data
+
+  fusionauth:
+    container_name: fusionauth
+    networks:
+      - cac
+    image: fusionauth/fusionauth-app:1.43.0
+    depends_on:
+      - fa-search
+    environment:
+      DATABASE_URL: jdbc:postgresql://fa-db:5432/fusionauth
+      DATABASE_ROOT_USERNAME: ${FUSIONAUTH_POSTGRES_USER}
+      DATABASE_ROOT_PASSWORD: ${FUSIONAUTH_POSTGRES_PASSWORD}
+      DATABASE_USERNAME: ${FUSIONAUTH_DATABASE_USER}
+      DATABASE_PASSWORD: ${FUSIONAUTH_DATABASE_PASSWORD}
+      # FUSIONAUTH_SEARCH_ENGINE_TYPE: elasticsearch
+      search.type: elasticsearch
+      # FUSIONAUTH_SEARCH_SERVERS: http://fa-search:9200
+      search.servers: http://fa-search:9200
+      # FUSIONAUTH_URL: ${FUSIONAUTH_URL}
+      fusionauth-app.url: ${FUSIONAUTH_URL}
+      FUSIONAUTH_API_KEY: ${FUSIONAUTH_API_KEY}
+      FUSIONAUTH_APP_KICKSTART_FILE: ${FUSIONAUTH_APP_KICKSTART_FILE}
+      FUSIONAUTH_ADMIN_EMAIL: ${FUSIONAUTH_ADMIN_EMAIL}
+      FUSIONAUTH_ADMIN_PASSWORD: ${FUSIONAUTH_ADMIN_PASSWORD}
+      FUSIONAUTH_APP_RUNTIME_MODE: production
+    restart: always
+    ports:
+      - 9011:9011
+    volumes:
+      - fa-config:/usr/local/fusionauth/config
+      - ./kickstart:/usr/local/fusionauth/kickstart
+
+  fa-db:
+    container_name: fa-db
+    networks:
+      - cac
+    image: postgres:12
+    environment:
+      - POSTGRES_USER=${FUSIONAUTH_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${FUSIONAUTH_POSTGRES_PASSWORD}
+    ports:
+      - "8013:5432"
+    volumes:
+      - ./pgdata-fa-db:/var/lib/postgresql/data
+    restart: always
+
+volumes:
+  fa-es-data:
+  fa-config:
